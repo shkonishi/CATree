@@ -5,13 +5,6 @@
 # source "$(dirname "$0")/../lib/common.sh"
 ###############################################################################
 
-# バージョン情報
-function call_version () {
-    local VERSION=0.0.241123
-    local AUTHOR=SHOGO_KONISHI
-    echo "Version. $VERSION , Author. $AUTHOR"
-}
-
 # conda 環境を実行する
 function act_conda() {
     # Usage: act_conda <conda_env_name> [<conda_env_file>]

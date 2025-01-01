@@ -6,12 +6,6 @@ CMDNAME=$(basename "$0")
 VERSION="0.1.0"
 LOG_FILE=$(date +"%Y%m%dT%H%M")_${CMDNAME%%.*}.log
 
-# Source common functions
-source "$(dirname "$0")/../lib/functions_common.sh"
-source "$(dirname "$0")/../lib/busco_processing.sh"
-source "$(dirname "$0")/../lib/alignment_processing.sh"
-source "$(dirname "$0")/../lib/tree_building.sh"
-
 # Default parameters
 CONDA_ENV_FILE="${HOME}/miniconda3/etc/profile.d/conda.sh"
 CONDA_ENV_NAME="busco5"
@@ -21,7 +15,17 @@ OUTPUT_PREFIX="results"
 COMPLETENESS=50
 CONTAMINATION=10
 THREADS=4
+TYPE='nuc'
+MAFFT_OPTS="--auto" # "--globalpair --maxiterate 1000"
+TRIMAL_OPTS="-automated1" # "-gappyout"
 CONFIG_FILE="$(dirname "$0")/../config/id_lookup.tsv"
+
+# Source common functions
+source "$(dirname "$0")/../lib/functions_common.sh"
+source "$(dirname "$0")/../lib/busco_processing.sh"
+source "$(dirname "$0")/../lib/alignment_processing.sh"
+source "$(dirname "$0")/../lib/tree_building.sh"
+source "$(dirname "$0")/../config/config.sh"
 
 # Print help
 function print_help() {
@@ -34,6 +38,7 @@ Options:
   -s, --suffix <STRING>          Suffix of input files (default: $SUFFIX_FASTA)
   -m, --completeness <NUM>       Genome completeness threshold (default: $COMPLETENESS)
   -n, --contamination <NUM>      Genomic contamination threshold (default: $CONTAMINATION)
+  -y, --type_of_seq <STRING>     Type of coregene sequence nuc or aa (default: $TYPE)
   -o, --output_prefix <STRING>   Output file prefix (default: $OUTPUT_PREFIX)
   -t, --threads <INT>            Number of threads (default: $THREADS)
   -c, --config <FILE>            Configuration file (default: $CONFIG_FILE)
@@ -63,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     -m|--completeness) COMPLETENESS="$2"; shift 2 ;;
     -n|--contamination) CONTAMINATION="$2"; shift 2 ;;
     -o|--output_prefix) OUTPUT_PREFIX="$2"; shift 2 ;;
+    -y|--type_of_seq) TYPE="$2" ; shift 2 ;;
     -t|--threads) THREADS="$2"; shift 2 ;;
     -c|--config) CONFIG_FILE="$2"; shift 2 ;;
     -h|--help) print_help; exit 0 ;;
@@ -80,13 +86,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate input
+[[ -z "$INPUT_DIR" && -z "$OUTPUT_DIR" ]] &&  print_help
 [[ -z "$INPUT_DIR" || -z "$OUTPUT_DIR" ]] && handle_error "Input and output directories are required."
 [[ ! -d "$INPUT_DIR" ]] && handle_error "Input directory not found: $INPUT_DIR"
 [[ -d "$OUTPUT_DIR" ]] && handle_error "Output directory already exists: $OUTPUT_DIR"
+if [[ "$TYPE" == 'nuc' ]]; then FTREE_OPTS="-nt -gtr" ; elif [[ "$TYPE" == 'aa' ]]; then FTREE_OPTS="-lg"; fi
 
 # Log setup
 echo "$CMDNAME version $VERSION" | tee -a "$LOG_FILE"
-echo "[CMD] $CMDNAME ${ARGS[*]}" | tee -a "$LOG_FILE"
+echo "[CMD] $CMDNAME $*" | tee -a "$LOG_FILE"
 
 # Arguments
 cat << EOS | tee -a "$LOG_FILE" >&2
@@ -101,7 +109,11 @@ cat << EOS | tee -a "$LOG_FILE" >&2
 | Thresh of contamination | $CONTAMINATION            
 | Input directory         | $INPUT_DIR                
 | Output directory        | $OUTPUT_DIR               
-| Prefix of output        | $OUTPUT_PREFIX            
+| Prefix of output        | $OUTPUT_PREFIX 	      
+| Type of cores           | $TYPE		      
+| Options for mafft       | $MAFFT_OPTS		      
+| Options for TrimAL      | $TRIMAL_OPTS	      
+| Options for FastTree    | $FTREE_OPTS               
 | Num of threads          | $THREADS                  
 | Config file             | $CONFIG_FILE              
 EOS
@@ -114,6 +126,7 @@ act_conda "$CONDA_ENV_NAME" "$CONDA_ENV_FILE" || handle_error "Failed to activat
 echo "[INFO] Running BUSCO..." | tee -a "$LOG_FILE"
 BUSCO_DIR="$OUTPUT_DIR/busco"
 run_busco_parallel "$BUSCO_REF" "$INPUT_DIR" "$SUFFIX_FASTA" "$BUSCO_DIR" "$THREADS" || handle_error "BUSCO failed."
+if [[ -d 'busco_downloads' ]]; then rmdir busco_downloads ;fi
 
 echo "[INFO] Summarizing BUSCO results..." | tee -a "$LOG_FILE"
 OUT_BUSCOSUM="$OUTPUT_DIR/busco_summary.tsv"
@@ -128,7 +141,7 @@ fi
 
 echo "[INFO] Aligning core genes..." | tee -a "$LOG_FILE"
 CORE_ALN_DIR="$OUTPUT_DIR/core_alignments"
-core_align_parallel -i "$CORE_DIR" -o "$CORE_ALN_DIR" -t "$THREADS" || handle_error "Core gene alignment failed."
+core_align_parallel -i "$CORE_DIR" -o "$CORE_ALN_DIR" -t "$THREADS" --type "$TYPE" --mafft-opts "$MAFFT_OPTS" --trimal-opts "$TRIMAL_OPTS" || handle_error "Core gene alignment failed."
 
 echo "[INFO] Concatenating alignments..." | tee -a "$LOG_FILE"
 OUT_ALN="$OUTPUT_DIR/${OUTPUT_PREFIX}_core.aln"
@@ -138,6 +151,6 @@ echo "[INFO] Convert headers of alignment fasta..." | tee -a "$LOG_FILE"
 convert_fasta_headers "$OUT_ALN" "$CONFIG_FILE" "$OUT_ALN" || echo "[ERROR] Conversion process failed."
 
 echo "[INFO] Building phylogenetic tree..." | tee -a "$LOG_FILE"
-run_fasttree "$OUT_ALN" || handle_error "Tree building failed."
+run_fasttree "$OUT_ALN" "$FTREE_OPTS" || handle_error "Tree building failed."
 
 echo "[INFO] Pipeline completed successfully!" | tee -a "$LOG_FILE"

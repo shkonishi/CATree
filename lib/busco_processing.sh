@@ -7,7 +7,7 @@
 #  - run_busco <REF> <INPUT_FASTA> 
 ###########################################################################################
 function run_busco () {
-    # Usage: run_busco <reference_db> <genome.fasta> [<output_dir>] [<num_threads>]
+    if [ $# -eq 0 ]; then echo "run_busco <reference_db> <genome.fasta> [<output_dir>] [<num_threads>]" ; return 1; fi
     local REF=$1
     local IN_FA=$2
     local OUT_DIR=${3:-'out_busco'}
@@ -45,7 +45,7 @@ function run_busco () {
 #  - parallelのジョブ数は4で固定
 ###########################################################################################
 function run_busco_parallel () {
-    # Usage : run_busco_parallel <REF> <IN_DIR> <suffix_fasta> <OUT_DIR> <num_jobs>
+    if [ $# -eq 0 ]; then echo "Usage : run_busco_parallel <REF> <IN_DIR> [suffix_fasta] [OUT_DIR] [num_jobs]" ; return 1; fi
     local REF=$1 
     local IN_DIR=$2
     local SFX=${3:-'fna'}
@@ -104,7 +104,7 @@ function run_busco_parallel () {
 # - 完全性および汚染度の情報を追記する
 ###########################################################################################
 function parse_busco_summary () {
-    # Usage: parse_busco_summary <busco_dir>
+    if [ $# -eq 0 ]; then echo "Usage: parse_busco_summary <busco_dir>" ; return 1; fi
     local IN_BSC=$1
     
     # IDの取得
@@ -146,7 +146,7 @@ function parse_busco_summary () {
 # - 複数のbusco結果をまとめて要約する
 ###########################################################################################
 function summarize_busco () {
-    # Usage: summarize_busco <busco_results_dir> [output_file]
+    if [ $# -eq 0 ]; then echo "Usage: summarize_busco <busco_results_dir> [<output_file>]" ; return 1; fi
     local BUSCO_DIR=$1
     local OUTPUT_FILE=${2:-}
 
@@ -173,12 +173,16 @@ function summarize_busco () {
     # サブディレクトリを並列で処理
     export -f parse_busco_summary
     export OUTPUT_FILE
-    find "$BUSCO_DIR" -mindepth 1 -maxdepth 1 -type d | parallel --no-notice parse_busco_summary {} >> "${OUTPUT_FILE:-/dev/stdout}"
-
-    if [[ $? -ne 0 ]]; then
-        echo "[ERROR] Failed to process summaries of busco." >&2
+    if ! find "$BUSCO_DIR" -mindepth 1 -maxdepth 1 -type d | \
+        parallel --no-notice parse_busco_summary {} >> "${OUTPUT_FILE:-/dev/stdout}"; then
+        echo "[ERROR] Failed to process summaries of BUSCO." >&2
         return 2
     fi
+    # find "$BUSCO_DIR" -mindepth 1 -maxdepth 1 -type d | parallel --no-notice parse_busco_summary {} >> "${OUTPUT_FILE:-/dev/stdout}"
+    # if [[ $? -ne 0 ]]; then
+    #     echo "[ERROR] Failed to process summaries of busco." >&2
+    #     return 2
+    # fi
 
     return 0
 }
@@ -193,7 +197,9 @@ function summarize_busco () {
 # - この時に採用されたゲノム数および除外されたゲノム数を標準エラー出力
 ###########################################################################################
 function core_extraction () {
-    # Usage: core_extraction <busco_summary.tsv> <busco_dir> [<completeness>] [<contamination>] [<output_dir>]
+    if [ $# -eq 0 ]; then 
+        echo "Usage: core_extraction <busco_summary.tsv> <busco_dir> [<completeness>] [<contamination>] [<output_dir>]" ; return 1
+    fi
     local BUSCO_SUM=$1
     local BUSCO_DIR=$2
     local COMP=${3:-50}

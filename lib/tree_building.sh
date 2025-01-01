@@ -3,9 +3,9 @@
 ###########################################################################################
 # fastaのヘッダーを変換
 #  - IDルックアップテーブル(タブ区切りテキスト)を予め作成しておく 
-#  - convert_fasta_headers <input.fasta> <lookup_table.tsv> <output.fasta>
 ###########################################################################################
 function convert_fasta_headers() {
+    if [ $# -eq 0 ]; then echo "Usage: convert_fasta_headers <input.fasta> <lookup_table.tsv> <output.fasta>" ; return 1; fi
     local input_fasta=$1
     local lookup_table=$2
     local output_fasta=$3
@@ -66,13 +66,11 @@ function convert_fasta_headers() {
 # FastTreeを実行する
 # # https://microbesonline.org/fasttree/#BranchLen
 # # https://purduercac-applications.readthedocs.io/en/latest/Biocontainers/fasttree/fasttree.html
-# # Command: FastTree -wag -gamma -log infer_out/infer/intermediate_results/gtdbtk.tree.log msa.faa
-# # -lgオプションはLG+CATモデルを使用することを指定します（アミノ酸配列の場合）
-# fasttree -lg input_file.faa > output_tree.nwk
-# run_fasttree input_nuc.aln nuc.nwk "-nt -gtr"
-# run_fasttree input_aa.aln aa.nwk "-lg"
+# run_fasttree input_nuc.aln "-nt -gtr"
+# run_fasttree input_aa.aln "-lg" # -lg: LG+CAT（amino acid）
 ###########################################################################################
 function run_fasttree () {
+    if [ $# -eq 0 ]; then echo "Usage: run_fasttree <ALIGNMENT_FASTA> [<FASTTREE_OPTS>]" ; return 1; fi
     local IN_ALN=$1
     local FASTTREE_OPTS=${2:-'-nt'}
     local PFX OUT_DIR OUT_TRE LOG_FT 
@@ -98,7 +96,7 @@ function run_fasttree () {
     # ログファイルの準備
     LOG_FT="${OUT_DIR}/$(date +"%Y%m%dT%H%M")_fasttree.log"
 
-    echo $LOG_FT $OUT_TRE 
+    echo "$LOG_FT" "$OUT_TRE" 
 
     # # FastTreeコマンドの実行
     cmd="FastTree ${FASTTREE_OPTS} -quiet -log ${LOG_FT} ${IN_ALN} > ${OUT_TRE}"

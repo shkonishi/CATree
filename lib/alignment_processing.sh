@@ -7,8 +7,11 @@
 # - core_align <input_fasta> <output_directory> [threads]
 ###########################################################################################
 function core_align() {
-    # Usage: core_align <input_fasta> <output_directory> [mafft_opts] [trimal_opts]
-    # Example: core_align input.fna ./out --auto -automated1
+    if [ $# -eq 0 ]; then 
+        echo "Usage: core_align <input_fasta> <output_directory> [<mafft_opts>] [<trimal_opts>]"
+        echo "Example: core_align genome.fasta ./out_core \"--atuto\" \"-automated1\" "
+        return 1
+    fi
     local IN_FA=$1
     local OUT_DIR=$2
     local MAFFT_OPTS=${3:-"--auto"}
@@ -33,22 +36,23 @@ function core_align() {
     echo "[CMD] $CMD2" >&2
     eval "$CMD2" || { echo "[ERROR] Error in trimal command: $CMD2" >&2; return 1; }
 
-
     echo "[INFO] Processed: $IN_FA -> $TRIM_FILE"
     return 0
 
 }
 
-
 ###########################################################################################
 # Core-gene alignment and trimming with GNU parallel
 # - 塩基配列 (nuc) or アミノ酸配列 (aa) を選択し並列実行
-# core_align_parallel --input input_dir --output output_dir --threads 8 --type aa --mafft-opts "--globalpair --maxiterate 1000" --trimal-opts "-gappyout"
+# core_align_parallel --input input_dir --output output_dir --threads 8 \
+# --type aa --mafft-opts "--globalpair --maxiterate 1000" --trimal-opts "-gappyout"
 ###########################################################################################
 function core_align_parallel() {
-    # Usage: core_align_parallel <input_directory> <output_directory> [threads] [--type nuc|aa] \
-    #                           [--mafft-opts "<options>"] [--trimal-opts "<options>"]
-
+    if [ $# -eq 0 ]; then 
+        echo "Usage: Usage: core_align_parallel -i genomes_dir [OPTIONS]"
+        echo "Example: core_align_parallel -i in_dir -o ./out_core -t 4 --type nuc --mafft-opts \"--auto\" --trimal-opts \"-automated1\" "
+        return 1
+    fi
     local IN_DIR OUT_DIR="out_core_align" THRD=4 TYPE="nuc" MAFFT_OPTS="--auto" TRIMAL_OPTS="-automated1"
 
     # オプション解析
@@ -94,10 +98,8 @@ function core_align_parallel() {
     export MAFFT_OPTS
     export TRIMAL_OPTS
 
-    parallel -j "$THRD" --keep-order --halt soon,fail=1 \
-        "core_align {} \"$OUT_DIR\" \"$MAFFT_OPTS\" \"$TRIMAL_OPTS\"" ::: "${FASTA_FILES[@]}"
-
-    if [[ $? -ne 0 ]]; then
+    if ! parallel -j "$THRD" --keep-order --halt soon,fail=1 \
+        "core_align {} \"$OUT_DIR\" \"$MAFFT_OPTS\" \"$TRIMAL_OPTS\"" ::: "${FASTA_FILES[@]}"; then
         echo "[ERROR] Parallel processing failed." >&2
         return 1
     fi
@@ -106,16 +108,12 @@ function core_align_parallel() {
     return 0
 }
 
-
-
 ###########################################################################################
 # Concatenate all core-gene alignments
 # - core_concatenate <input_directory> <output_fasta> 
 ###########################################################################################
 function core_concatenate () {
-    # Usage: core_concatenate <input_directory> <output_fasta> 
-    # Example: core_concatenate ./out_core_align concatenated.aln 
-
+    if [ $# -eq 0 ]; then echo "Usage: core_concatenate <input_directory> [<alignment_fasta>]" ; return 1; fi 
     local IN_DIR=$1
     local OUT_FASTA=${2:-'result_cores.aln'}
 
