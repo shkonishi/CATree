@@ -3,7 +3,7 @@
 #######################################################################
 # predict_rrna
 #  barrnapを使用して単一ゲノムからrRNA配列を抽出する
-#  barrnapの出力fastaにはpartialの情報が含まれないので、自前で抽出D
+#  barrnapの出力fastaにはpartialの情報が含まれないので、自前で抽出
 #######################################################################
 function predict_rrna () {
     if [ $# -eq 0 ]; then echo "Usage: predict_rrna <input.fasta> <output.gff> [arc|bac]" ; return 1; fi
@@ -216,21 +216,22 @@ function unique_fa () {
     local FA=$1
     local OUT_DIR=${2:-./out_16s}
     local THRESH=${3:-'0.97'}
-    local PFX OUTPUT OUTUC VSLOGS
+    local PFX OUTPUT NFA OUTUC VSLOGS
     
-
-    # 入力ファイルの存在確認
+    # 入力ファイルの確認
     if [[ -z "$FA" || ! -f "$FA" ]]; then
         echo "Error: Input file '$FA' not found or not specified." >&2
         return 1
     fi
+    
+    # 出力ファイル名の設定 & 1copyの場合はそのまま出力
+    PFX=$(basename "${FA%.*}")
+    OUTPUT="$(dirname "$OUT_DIR")/${PFX}_ucopy.fa"
+    NFA=$(grep -c "^>" "$FA")
+    if [[ $NFA == '1' ]]; then sed -e "s/^>.*$/>${PFX}_cp1/" "$FA" > "$OUTPUT" ; return 0 ; fi
 
     # 出力ディレクトリの作成
     if [[ ! -d "$OUT_DIR" ]]; then mkdir -p "$OUT_DIR"; fi
-
-    # 出力ファイル名の設定
-    PFX=$(basename "${FA%.*}")
-    OUTPUT="${OUT_DIR}/${PFX}_ucopy.fa"
     OUTUC="${OUT_DIR}/${PFX}_clusters.uc"
     VSLOGS="${OUT_DIR}/combined_vsearch.log"
 
@@ -253,26 +254,63 @@ function unique_fa () {
 #######################################################################
 # extract_unique16s <input_dir> 
 #######################################################################
-function extract_unique16s() {
-    if [ $# -eq 0 ]; then 
-        echo "Usage: extract_unique16s <input_dir> [<output_dir>] [<suffix>] [<bac|arc>] [<identity>] [<threads>]" >&2
+function extract_unique16s () {
+    local in_fa=$1
+    local out_dir=${2:-"./out_rrna"}
+    local mode=${3:-'bac'}
+    local identity=${4:-'0.97'}
+
+    # 入力ファイル確認
+	if [[ ! -f "$in_fa" ]]; then echo "ERROR: Input file $in_fa not found." >&2 ; return 1 ; fi
+    # 出力ディレクトリの作成
+    if [[ ! -d "$out_dir" ]]; then mkdir -p "$out_dir"; fi
+
+    # 出力ファイル
+    local pfx ; pfx=$(basename "${in_fa%.*}")
+    local out_gff="${out_dir}/${pfx}_barrnap.gff"
+    local out_16s="${out_dir}/${pfx}_filt_16s.fa"
+
+    # Process 16s rRNA from assembly
+    echo "[INFO] Processing genome: $in_fa" >&2
+    if ! predict_rrna "$in_fa" "$out_gff" "$mode"; then
+        echo "[ERROR] Failed to predict rRNA: $in_fa" >&2
         return 1
     fi
+
+    if ! extract_gff "$out_gff" "$in_fa" | filter_16s > "$out_16s" ; then
+        echo "[ERROR] Failed extraction and/or filtering 16S rRNA with $out_gff from $in_fa ." >&2
+        return 1
+    fi
+    echo "[INFO] Filtering completed: $out_16s" >&2
+
+    if ! unique_fa "$out_16s" "$out_dir" "$identity" ; then
+        echo "[INFO] Failed clustering of all 16S copies for $in_fa" >&2
+        return 1
+    fi
+    echo "[INFO] Unique 16S sequences saved to $out_dir" >&2
+
+    return 0
+}
+
+#######################################################################
+# batch_extract_unique16s <input_dir> [<out_dir>] [<suffix>] [<mode>] [<identity>] [<njobs>]
+#######################################################################
+function batch_extract_unique16s () {
     local input_dir=$1
-    local output_dir=${2:-"./out_rrna"}
+    local out_dir=${2:-"./out_rrna"}
     local suffix=${3:-'fna'}
     local mode=${4:-'bac'}
     local identity=${5:-'0.97'}
     local njobs=${6:-4}
 
     # 入力ディレクトリの存在確認
-    if [[ -z "$input_dir" || ! -d "$input_dir" ]]; then
+    if [[ ! -d "$input_dir" ]]; then
         echo "[ERROR] Either $input_dir is missing, not a directory, or not defined!" >&2
         return 1
     fi
 
     # 出力ディレクトリの作成
-    if [[ ! -d "$output_dir" ]]; then mkdir -p "$output_dir"; fi
+    if [[ ! -d "$out_dir" ]]; then mkdir -p "$out_dir"; fi
 
     # ファイルリストの取得
     mapfile -t genomes < <(find "$input_dir" -type f -name "*.${suffix}")
@@ -287,35 +325,16 @@ function extract_unique16s() {
         return 1
     fi
 
-    # 関数内のログメッセージを処理
-    # shellcheck disable=SC2317    
-    function process_genome() {
-        local genome="$1"
-        local output_dir="$2"
-        local suffix="$3"
-        local identity="$4"
-
-        local pfx ; pfx=$(basename "$genome" ."$suffix")
-        local out_gff="${output_dir}/${pfx}_barrnap.gff"
-        local out_16s="${output_dir}/${pfx}_filt_16s.fa"
-        local log_file="${output_dir}/${pfx}_processing.log"
-
-        {
-            echo "[INFO] Processing genome: $genome"
-            predict_rrna "$genome" "$out_gff" &&
-            echo "[INFO] Barrnap completed: $out_gff" &&
-            extract_gff "$out_gff" "$genome" | filter_16s > "$out_16s" &&
-            echo "[INFO] Filtering completed: $out_16s" &&
-            unique_fa "$out_16s" "$output_dir" "$identity" &&
-            echo "[INFO] Unique 16S sequences saved for $genome"
-        } >> "$log_file" 2>&1 || echo "[ERROR] Processing failed for $genome" >> "$log_file"
-    }
-    export -f process_genome predict_rrna extract_gff filter_16s unique_fa
-
     # 並列処理
-    parallel --jobs "$njobs" --halt soon,fail=1 --line-buffer process_genome {} "$output_dir" "$suffix" "$identity" ::: "${genomes[@]}"
+    export -f extract_unique16s predict_rrna extract_gff filter_16s unique_fa
+    # この場合メッセージは2>&1 として出力される
+    parallel --jobs "$njobs" --halt soon,fail=1 --line-buffer 'extract_unique16s {} '"$out_dir"' '"$mode"' '"$identity"' 2>&1' ::: "${genomes[@]}"
+    #parallel --jobs "$njobs" --halt soon,fail=1 --group extract_unique16s {} "$out_dir" "$mode" "$identity" ::: "${genomes[@]}"
+    #parallel --jobs "$njobs" --halt soon,fail=1 extract_unique16s {} "$out_dir" "$mode" "$identity" '>' "$out_dir/{/.}.log" '2>&1' ::: "${genomes[@]}"
 
-    echo "[INFO] All processing completed. Check logs in $output_dir"
+    echo "[INFO] All processing completed. Check logs in $output_dir" >&2
+    return 0
+
 }
 
 #######################################################################
@@ -332,7 +351,7 @@ function merge_fasta() {
 
     local input_dir="$1"
     local output_file="$2"
-    local file_extension="${3:-_filt_16s_ucopy.fa}"  # デフォルト値を設定
+    local file_extension="${3:-_filt_16s_ucopy.fa}" 
 
     # 出力ファイルを初期化
     : > "$output_file"
@@ -341,16 +360,22 @@ function merge_fasta() {
     while IFS= read -r -d '' file; do
         # シーケンス数を確認
         local num_sequences
-        num_sequences=$(grep -c "^>" "$file")
+        num_sequences=$(awk '/^>/ {count++} END {print count}' "$file")
 
         if [ "$num_sequences" -eq 1 ]; then
+            # ヘッダーを変更（ファイル名を追加して一意に）
+            #awk -v fname="$(basename "$file")" '/^>/ { sub("_filt_16s_.*", "", $1); sub("\\.[0-9]", "", $1); print $1 "_" fname } !/^>/ {print}' "$file" >> "$output_file"
             # ヘッダーを変更（ファイル名から識別子を抽出）
-            awk '/^>/{sub(".[0-9]_filt_16s_.*","",$1)}{print}' "$file" >> "$output_file"
+            awk '/^>/{sub("_filt_16s_.*","",$1); sub("\\.[0-9]$","",$1);}{print}' "$file" >> "$output_file"
         else
-            # 警告を出力し、ヘッダーは変更せずそのまま出力
-            echo "Warning: File '$file' contains $num_sequences sequences. Including original headers." >&2
-            cat "$file" >> "$output_file"
+            # 警告を出力し、ヘッダーを元ファイル名付きで出力
+            echo "Warning: File '$file' contains $num_sequences sequences. Headers updated with file name." >&2
+            awk -v fname="$(basename "$file")" '/^>/ {
+                print $0 "_" fname 
+            } !/^>/ {print}' "$file" >> "$output_file"
         fi
-    done < <(find "$input_dir" -type f -name "*${file_extension}" -print0)
+    done < <(find "$input_dir" -maxdepth 1 -type f -name "*${file_extension}" -print0)
+
+    echo "[INFO] All files have been merged into '$output_file'."
 }
 

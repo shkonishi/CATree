@@ -86,7 +86,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate input
-[[ -z "$INPUT_DIR" && -z "$OUTPUT_DIR" ]] &&  print_help
+if [[ -z "$INPUT_DIR" && -z "$OUTPUT_DIR" ]] ; then print_help ; exit 1 ; fi
 [[ -z "$INPUT_DIR" || -z "$OUTPUT_DIR" ]] && handle_error "Input and output directories are required."
 [[ ! -d "$INPUT_DIR" ]] && handle_error "Input directory not found: $INPUT_DIR"
 [[ -d "$OUTPUT_DIR" ]] && handle_error "Output directory already exists: $OUTPUT_DIR"

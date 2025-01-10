@@ -18,7 +18,6 @@ OUTPUT_PREFIX="results_16s"
 MODE='bac'
 THREADS=4
 IDENTITY='0.97'
-TYPE='nuc'
 MAFFT_OPTS="--auto" # "--globalpair --maxiterate 1000"
 TRIMAL_OPTS="-automated1" # "-gappyout"
 CONFIG_FILE="$(dirname "$0")/../config/id_lookup.tsv"
@@ -73,7 +72,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Validate input
-[[ -z "$INPUT_DIR" && -z "$OUTPUT_DIR" ]] &&  print_help
+if [[ -z "$INPUT_DIR" && -z "$OUTPUT_DIR" ]] ; then print_help ; exit 1 ; fi
 [[ -z "$INPUT_DIR" || -z "$OUTPUT_DIR" ]] && handle_error "Input and output directories are required."
 [[ ! -d "$INPUT_DIR" ]] && handle_error "Input directory not found: $INPUT_DIR"
 [[ -d "$OUTPUT_DIR" ]] && handle_error "Output directory already exists: $OUTPUT_DIR"
@@ -103,12 +102,12 @@ EOS
 # 16S rRNA specific workflow
 echo "[INFO] Starting 16S rRNA extraction..." | tee -a "$LOG_FILE"
 OUTRRNA_DIR="${OUTPUT_DIR}/rrna"
-extract_unique16s "$INPUT_DIR" "$OUTRRNA_DIR" "$SUFFIX_FASTA" "$MODE" "$IDENTITY" "$THREADS" || handle_error "Failed to extract 16S rRNA sequences."
+batch_extract_unique16s "$INPUT_DIR" "$OUTRRNA_DIR" "$SUFFIX_FASTA" "$MODE" "$IDENTITY" "$THREADS" || handle_error "Failed to extract 16S rRNA sequences."
 
 # Merge all 16S rRNA copies
 echo "[INFO] Performing merged fasta ..." | tee -a "$LOG_FILE"
 U16S_FA="${OUTPUT_DIR}/merged_16s.fa"
-merge_fasta "$OUTRRNA_DIR" "$U16S_FA" || handle_error "Failed to merge sequences."
+merge_fasta "$OUTPUT_DIR" "$U16S_FA" || handle_error "Failed to merge sequences."
 
 # Alignment all 16S rRNA copies
 echo "[INFO] Alignment & trimming ..." | tee -a "$LOG_FILE"
