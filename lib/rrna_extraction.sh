@@ -277,10 +277,18 @@ function extract_unique16s () {
         return 1
     fi
 
-    if ! extract_gff "$out_gff" "$in_fa" | filter_16s > "$out_16s" ; then
-        echo "[ERROR] Failed extraction and/or filtering 16S rRNA with $out_gff from $in_fa ." >&2
+    # 一時変数で16S rRNA配列を確認
+    local filtered_16s
+    filtered_16s=$(extract_gff "$out_gff" "$in_fa" | filter_16s)
+
+    # 16S rRNAが見つからない場合
+    if [[ -z "$filtered_16s" ]]; then
+        echo "[INFO] No 16S rRNA sequences found in $in_fa." >&2
         return 1
     fi
+
+    # 見つかった場合のみファイルに書き込む
+    echo "$filtered_16s" > "$out_16s"
     echo "[INFO] Filtering completed: $out_16s" >&2
 
     if ! unique_fa "$out_16s" "$out_dir" "$identity" ; then
@@ -327,8 +335,10 @@ function batch_extract_unique16s () {
 
     # 並列処理
     export -f extract_unique16s predict_rrna extract_gff filter_16s unique_fa
-    # この場合メッセージは2>&1 として出力される
-    parallel --jobs "$njobs" --halt soon,fail=1 --line-buffer 'extract_unique16s {} '"$out_dir"' '"$mode"' '"$identity"' 2>&1' ::: "${genomes[@]}"
+    parallel --jobs "$njobs" --line-buffer \
+     'if ! extract_unique16s {} '"$out_dir"' '"$mode"' '"$identity"'; then echo "[ERROR] Failed for file: {}" >&2; fi' ::: "${genomes[@]}"
+   
+    #parallel --jobs "$njobs" --halt soon,fail=1 --line-buffer 'extract_unique16s {} '"$out_dir"' '"$mode"' '"$identity"' 2>&1' ::: "${genomes[@]}"
     #parallel --jobs "$njobs" --halt soon,fail=1 --group extract_unique16s {} "$out_dir" "$mode" "$identity" ::: "${genomes[@]}"
     #parallel --jobs "$njobs" --halt soon,fail=1 extract_unique16s {} "$out_dir" "$mode" "$identity" '>' "$out_dir/{/.}.log" '2>&1' ::: "${genomes[@]}"
 

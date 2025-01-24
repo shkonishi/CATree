@@ -80,7 +80,7 @@ function run_busco_parallel () {
     fi
 
     # ログファイルの準備
-    LOG_FILE=$(date +"%Y%m%dT%H%M")_busco.log
+    LOG_FILE="${OUT_DIR}/$(date +"%Y%m%dT%H%M")_busco.log"
 
     # run_busco 関数を export
     export -f run_busco
