@@ -1,9 +1,9 @@
 #!/bin/bash
 
-###########################################################################################
+# ------------------------------------------------------------------------------
 # fastaのヘッダーを変換
 #  - IDルックアップテーブル(タブ区切りテキスト)を予め作成しておく 
-###########################################################################################
+# ------------------------------------------------------------------------------
 function convert_fasta_headers() {
     if [ $# -eq 0 ]; then echo "Usage: convert_fasta_headers <input.fasta> <lookup_table.tsv> <output.fasta>" ; return 1; fi
     local input_fasta=$1
@@ -11,17 +11,11 @@ function convert_fasta_headers() {
     local output_fasta=$3
 
     # 入力ファイルの存在確認
-    if [[ ! -f "$input_fasta" ]]; then
-        echo "[ERROR] Input fasta file not found: $input_fasta" >&2
-        return 1
-    fi
-    if [[ ! -f "$lookup_table" ]]; then
-        echo "[ERROR] Lookup table file not found: $lookup_table" >&2
-        return 1
-    fi
+    [[ -f "$input_fasta" ]] || { echo "[ERROR] Input fasta file not found: $input_fasta" >&2 ; return 1 ;}
+    [[ -f "$lookup_table" ]] || { echo "[ERROR] Lookup table file not found: $lookup_table" >&2 ; return 1 ; }
 
     # 一時ファイルの生成 (同名ファイルの上書きを防止)
-    local temp_file="${output_fasta}.tmp"
+    local temp_file ; temp_file="${output_fasta}.tmp"
 
     awk 'BEGIN {
         FS = "\t"; OFS = "\n";
@@ -62,13 +56,13 @@ function convert_fasta_headers() {
 
 }
 
-###########################################################################################
+# ------------------------------------------------------------------------------
 # FastTreeを実行する
 # # https://microbesonline.org/fasttree/#BranchLen
 # # https://purduercac-applications.readthedocs.io/en/latest/Biocontainers/fasttree/fasttree.html
 # run_fasttree input_nuc.aln "-nt -gtr"
 # run_fasttree input_aa.aln "-lg" # -lg: LG+CAT（amino acid）
-###########################################################################################
+# ------------------------------------------------------------------------------
 function run_fasttree () {
     if [ $# -eq 0 ]; then echo "Usage: run_fasttree <ALIGNMENT_FASTA> [<FASTTREE_OPTS>]" ; return 1; fi
     local IN_ALN=$1
@@ -107,4 +101,39 @@ function run_fasttree () {
     }
 
     return 0
+}
+
+# ------------------------------------------------------------------------------
+# iqtree2の実行
+# ------------------------------------------------------------------------------
+function run_iqtree2 () {
+   if [ $# -eq 0 ]; then
+      echo -e "Usage: run_iqtree2 <input_alignment_fasta> [<model>] [<outdir>] [<prefix>] [<threads>]" 
+      echo "default: Automatic model selection (ModelFinder Plus)." 
+      return 1
+   fi
+   # 引数
+   local in_aln=$1
+   local model=${2:-'MFP'}
+   local outdir=${3:-'./out_iqtree'}
+   local pfx=${4:-'results'}
+   local threads=${5:-'8'}
+   local opts_iqtree=${6:-"-b 1000"}
+
+   local out_prefix log
+   out_prefix="${outdir}"/"${pfx}"
+   log="${outdir}/$(date +"%Y%m%dT%H%M")_iqtree2.log"
+   
+   # 入力ファイル確認
+   [[ ! -f "$in_aln" ]] && { echo -e "\e[31m[Error] Input file '$in_aln' not found.\e[0m" ; return 1; }
+
+   # 出力ディレクトリ確認
+   [[ ! -d "$outdir" ]] && mkdir -p "$outdir"
+
+   # Run iqtree2 
+   # shellcheck disable=SC2206
+   cmd=(iqtree2 -s "$in_aln" -m "$model" -T "$threads" -pre "$out_prefix" $opts_iqtree)
+   echo "[CMD]" "${cmd[@]}" >&2
+   "${cmd[@]}"  > "$log" 2>&1 || { echo "[ERROR] Error in iqtree2 " >&2; return 1; }
+
 }

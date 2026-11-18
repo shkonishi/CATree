@@ -105,8 +105,8 @@ After running the pipeline, the output directories and files will be structured 
 
 ## Future Features
 I plan to implement the following features in future updates:
+- Construction of phylogenetic tree using IQ-Tree.
 - Support for transcriptome data to core-gene extraction with BUSCO.
-- Option to use CheckM for core gene extraction instead of BUSCO.
 
 ## Citation
 If you use CATree in your research, please cite the following paper: (under preparation)
